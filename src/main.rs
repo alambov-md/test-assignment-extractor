@@ -22,7 +22,7 @@ struct Args {
     /// Save path with debug default value
     #[arg(short, long, default_value_t = String::from("jsons"))]
     save_path: String,
-    /// Short polling interval (default false)
+    /// Short polling interval (default true)
     #[arg(long, default_value_t = true)]
     short_polling: bool,
 }
@@ -89,19 +89,16 @@ fn fetch_with_retry<F, T>(fetch_closure: F) -> Result<T, FetcherError>
 where
     F: Fn() -> Result<T, FetcherError>,
 {
-    let first_result = (fetch_closure)();
+    loop {
+        let result = (fetch_closure)();
 
-    match first_result {
-        Ok(r) => Ok(r),
-        // Retry handling
-        Err(FetcherError::Http {
-            code: 429,
-            retry_after,
-        }) => {
+        // Retry on `Too Many Requests`
+        if let Err(FetcherError::Http { code: 429, retry_after }) = result {
             std::thread::sleep(retry_after.unwrap_or(Duration::from_secs(300)));
-            (fetch_closure)()
+            continue;
         }
-        Err(e) => Err(e),
+
+        return result;
     }
 }
 
